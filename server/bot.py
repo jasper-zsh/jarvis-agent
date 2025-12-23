@@ -38,7 +38,7 @@ from pipecat.processors.transcript_processor import TranscriptProcessor
 from pipecat.runner.types import RunnerArguments, SmallWebRTCRunnerArguments
 from pipecat.services.mcp_service import MCPClient
 from mcp.client.session_group import StreamableHttpParameters
-from pipecat.services.qwen.llm import QwenLLMService
+from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
@@ -72,10 +72,10 @@ async def run_bot(transport: BaseTransport):
     )
 
     # LLM service
-    llm = QwenLLMService(
-        base_url='https://dashscope.aliyuncs.com/compatible-mode/v1',
-        model=os.getenv("QWEN_MODEL"),
-        api_key=os.getenv("QWEN_API_KEY")
+    llm = OpenAILLMService(
+        base_url=os.getenv("OPENAI_BASE_URL"),
+        model=os.getenv("OPENAI_LLM_MODEL"),
+        api_key=os.getenv("OPENAI_API_KEY")
     )
 
     mcp = MCPClient(
@@ -95,6 +95,10 @@ async def run_bot(transport: BaseTransport):
             "role": "system",
             "content": "You are a friendly AI assistant. Respond naturally and keep your answers conversational.",
         },
+        {
+            "role": "user",
+            "content": "你好"
+        }
     ]
 
     context = LLMContext(
