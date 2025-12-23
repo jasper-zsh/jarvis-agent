@@ -88,17 +88,11 @@ async def run_bot(transport: BaseTransport):
     )
     tools = await mcp.register_tools(llm)
 
-    client_side_tools = ClientSideTools()
-
     messages = [
         {
             "role": "system",
             "content": "You are a friendly AI assistant. Respond naturally and keep your answers conversational.",
         },
-        {
-            "role": "user",
-            "content": "你好"
-        }
     ]
 
     context = LLMContext(
@@ -119,7 +113,6 @@ async def run_bot(transport: BaseTransport):
         [
             transport.input(),
             rtvi,
-            client_side_tools,
             asr,
             transcript_processor.user(),
             context_aggregator.user(),
@@ -153,9 +146,6 @@ async def run_bot(transport: BaseTransport):
             required=[],
         ))
         await rtvi.set_bot_ready()
-        await task.queue_frame(RegisterClientSideToolsFrame())
-        # Kick off the conversation
-        await task.queue_frames([LLMRunFrame()])
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
