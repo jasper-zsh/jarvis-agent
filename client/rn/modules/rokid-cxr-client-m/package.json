@@ -1,0 +1,28 @@
+{
+  "name": "react-native-rokid-cxr-client-m",
+  "version": "0.0.0",
+  "description": "Rokid CXR Client M",
+  "main": "src/index",
+  "codegenConfig": {
+    "name": "RokidCxrClientMSpec",
+    "type": "modules",
+    "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "pro.sihao.rokid.cxr.client"
+    }
+  },
+  "author": "JasperZ <jasper.zsh@hotmail.com> (https://github.com/jasper-zsh)",
+  "license": "UNLICENSED",
+  "homepage": "https://github.com/jasper-zsh/react-native-rokid-cxr-client-m#readme",
+  "create-react-native-library": {
+    "type": "turbo-module",
+    "languages": "kotlin-objc",
+    "tools": [
+      "eslint",
+      "jest",
+      "lefthook",
+      "release-it"
+    ],
+    "version": "0.56.0"
+  }
+}
