@@ -11,11 +11,16 @@
     "codegen": "cd android && ./gradlew generateCodegenArtifactsFromSchema"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "@react-native/new-app-screen": "0.83.1",
+    "@react-navigation/bottom-tabs": "^7.9.0",
+    "@react-navigation/native": "^7.1.26",
     "react": "19.2.0",
     "react-native": "0.83.1",
-    "@react-native/new-app-screen": "0.83.1",
-    "react-native-safe-area-context": "^5.5.2",
-    "react-native-rokid-cxr-client-m": "file:./modules\\rokid-cxr-client-m"
+    "react-native-permissions": "^5.4.4",
+    "react-native-rokid-cxr-client-m": "file:./modules\\rokid-cxr-client-m",
+    "react-native-safe-area-context": "^5.6.2",
+    "react-native-screens": "^4.19.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

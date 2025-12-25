@@ -1,67 +1,60 @@
 import { TurboModuleRegistry, type TurboModule, type CodegenTypes } from 'react-native';
 
-export enum CxrStatus {
-  BLUETOOTH_AVAILABLE,
-  BLUETOOTH_UNAVAILABLE,
-  BLUETOOTH_INIT,
-  WIFI_AVAILABLE,
-  WIFI_UNAVAILABLE,
-  WIFI_INIT,
-  REQUEST_SUCCEED,
-  REQUEST_FAILED,
-  REQUEST_WAITING,
-  RESPONSE_SUCCEED,
-  RESPONSE_INVALID,
-  RESPONSE_TIMEOUT,
-}
+export type CxrStatus = 
+  'BLUETOOTH_AVAILABLE' |
+  'BLUETOOTH_UNAVAILABLE' |
+  'BLUETOOTH_INIT' |
+  'WIFI_AVAILABLE' |
+  'WIFI_UNAVAILABLE' |
+  'WIFI_INIT' |
+  'REQUEST_SUCCEED' |
+  'REQUEST_FAILED' |
+  'REQUEST_WAITING' |
+  'RESPONSE_SUCCEED' |
+  'RESPONSE_INVALID' |
+  'RESPONSE_TIMEOUT';
 
-export enum CxrStreamType {
-  WORD_TIPS,
-}
+export type CxrStreamType = 'WORD_TIPS';
 
-export enum CxrMediaType {
-  AUDIO,
-  PICTURE,
-  VIDEO,
-  ALL,
-}
+export type CxrMediaType =
+  'AUDIO' |
+  'PICTURE' |
+  'VIDEO' |
+  'ALL';
 
-export enum CxrSceneType {
-  AI_CHAT,
-  TRANSLATE,
-  AUDIO_RECORD,
-  VIDEO_RECORD,
-  WORD_TIPS,
-  NAVIGATION,
-}
+export type CxrSceneType =
+  'AI_CHAT' |
+  'TRANSLATE' |
+  'AUDIO_RECORD' |
+  'VIDEO_RECORD' |
+  'WORD_TIPS' |
+  'NAVIGATION';
 
-export enum CxrSendErrorCode {
-    UNKNOWN,
-}
+export type CxrSendErrorCode = 'UNKNOWN';
 
-export enum CxrWifiErrorCode {
-    SUCCEED,
-    WIFI_DISABLED,
-    WIFI_CONNECT_FAILED,
-    UNKNOWN,
-}
+export type CxrWifiErrorCode =
+  'SUCCEED' |
+  'WIFI_DISABLED' |
+  'WIFI_CONNECT_FAILED' |
+  'UNKNOWN';
 
 export type BluetoothDevice = {
     name: string,
     address: string,
-    data: string,
 }
 
-export enum CxrBluetoothErrorCode {
-    SUCCEED,
-    PARAM_INVALID,
-    BLE_CONNECT_FAILED,
-    SOCKET_CONNECT_FAILED,
-    UNKNOWN,
-}
+export type BluetoothScanResultCallback = (device: BluetoothDevice) => void;
+export type BluetoothScanFailedCallback = (code: number) => void;
+
+export type CxrBluetoothErrorCode =
+  'SUCCEED' |
+  'PARAM_INVALID' |
+  'BLE_CONNECT_FAILED' |
+  'SOCKET_CONNECT_FAILED' |
+  'UNKNOWN';
 
 export type BluetoothOnConnected = () => void;
-export type BluetoothOnConnectionInfo = (v1: string, v2: string, v3: string, v4: number) => void;
+export type BluetoothOnConnectionInfo = (socketUuid: string, macAddress: string, rokidAccount: string, glassesType: number) => void;
 export type BluetoothOnDisconnected = () => void;
 export type BluetoothOnFailed = (code: CxrBluetoothErrorCode) => void;
 
@@ -76,7 +69,7 @@ export type GlassInfo = {
     isCharging: boolean,
     devicePanel: string,
     brightness: number,
-    sound: number,
+    volume: number,
     wearingStatus: string,
     deviceKey: string,
     deviceSecret: string,
@@ -89,11 +82,7 @@ export type GlassInfo = {
     assistVersionCode: number,
     systemVersion: string,
 };
-export type GlassInfoResult = {
-    status: CxrStatus,
-    info: GlassInfo,
-}
-export type GlassInfoResultCallback = (info: GlassInfoResult) => void;
+export type GlassInfoResultCallback = (status: CxrStatus, info: GlassInfo) => void;
 
 export type PhotoResult = {
     status: CxrStatus,
@@ -198,9 +187,12 @@ export interface Spec extends TurboModule {
 
   readonly onVolumeUpdated: CodegenTypes.EventEmitter<VolumeUpdateEvent>;
 
+  startScanGlasses(onScanResult: BluetoothScanResultCallback, onScanFailed: BluetoothScanFailedCallback): void;
+  stopScanGlasses(): void;
+
   initBluetooth(device: BluetoothDevice, onConnectionInfo: BluetoothOnConnectionInfo, onConnected: BluetoothOnConnected, onDisconnected: BluetoothOnDisconnected, onFailed: BluetoothOnFailed): void;
   updateRokidAccount(account: string): void;
-  connectBluetooth(v2: string, v3: string, onConnectionInfo: BluetoothOnConnectionInfo, onConnected: BluetoothOnConnected, onDisconnected: BluetoothOnDisconnected, onFailed: BluetoothOnFailed): void;
+  connectBluetooth(socketUuid: string, macAddress: string, onConnectionInfo: BluetoothOnConnectionInfo, onConnected: BluetoothOnConnected, onDisconnected: BluetoothOnDisconnected, onFailed: BluetoothOnFailed): void;
   isBluetoothConnected(): boolean;
   setCommunicationDevice(): void;
   clearCommunicationDevice(): void;
