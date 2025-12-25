@@ -190,8 +190,10 @@ export interface Spec extends TurboModule {
   startScanGlasses(onScanResult: BluetoothScanResultCallback, onScanFailed: BluetoothScanFailedCallback): void;
   stopScanGlasses(): void;
 
+  // Pair new glasses
   initBluetooth(device: BluetoothDevice, onConnectionInfo: BluetoothOnConnectionInfo, onConnected: BluetoothOnConnected, onDisconnected: BluetoothOnDisconnected, onFailed: BluetoothOnFailed): void;
   updateRokidAccount(account: string): void;
+  // Connect to paired glasses
   connectBluetooth(socketUuid: string, macAddress: string, onConnectionInfo: BluetoothOnConnectionInfo, onConnected: BluetoothOnConnected, onDisconnected: BluetoothOnDisconnected, onFailed: BluetoothOnFailed): void;
   isBluetoothConnected(): boolean;
   setCommunicationDevice(): void;
@@ -220,6 +222,7 @@ export interface Spec extends TurboModule {
   openAudioRecord(streamType: number, scene: string): CxrStatus;
   closeAudioRecord(scene: string): CxrStatus;
   getUnsyncNum(onUnsyncNumResult: UnsyncNumResultCallback): CxrStatus;
+  // Unpair connected glasses
   deinitBluetooth(): void;
   initWifiP2P(onConnected: WifiConnectedCallback, onDisconnected: WifiDisconnectedCallback, onFailed: WifiFailedCallback): CxrStatus;
   isWifiP2PConnected(): boolean;
