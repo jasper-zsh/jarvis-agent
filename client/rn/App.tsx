@@ -10,6 +10,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import { GlassesConnectionProvider } from './src/services/GlassesConnectionContext';
+import { TransportProvider } from './src/services/TransportContext';
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -17,10 +18,12 @@ function App() {
   return (
     <SafeAreaProvider>
       <GlassesConnectionProvider>
-        <NavigationContainer>
-          <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-          <AppNavigator />
-        </NavigationContainer>
+        <TransportProvider>
+          <NavigationContainer>
+            <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+            <AppNavigator />
+          </NavigationContainer>
+        </TransportProvider>
       </GlassesConnectionProvider>
     </SafeAreaProvider>
   );

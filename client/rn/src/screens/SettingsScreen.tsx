@@ -11,6 +11,7 @@ import {
   NativeEventEmitter,
   NativeModules,
   Platform,
+  TextInput,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RokidCxrClientM from 'react-native-rokid-cxr-client-m';
@@ -30,6 +31,8 @@ import {
   check,
   openSettings,
 } from 'react-native-permissions';
+import { getServerUrl, saveServerConfig } from '../config';
+import { useTransport } from '../services/TransportContext';
 
 // Create event emitter for the native module
 const RokidCxrEventEmitter = new NativeEventEmitter(RokidCxrClientM as any);
@@ -53,6 +56,7 @@ interface SavedDevice {
 }
 
 const SettingsScreen: React.FC = () => {
+  const { reinitializeTransport, connectionStatus: transportConnectionStatus } = useTransport();
   const [isConnected, setIsConnected] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scannedDevices, setScannedDevices] = useState<BluetoothDevice[]>([]);
@@ -66,7 +70,60 @@ const SettingsScreen: React.FC = () => {
   const [volume, setVolume] = useState<number | null>(null);
   const [isCheckingPermissions, setIsCheckingPermissions] = useState(false);
 
+  // Server configuration state
+  const [serverUrl, setServerUrl] = useState('http://localhost:7860');
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [fullUrl, setFullUrl] = useState('http://localhost:7860/start');
+
   const scanningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load server configuration on mount
+  useEffect(() => {
+    loadServerConfig();
+  }, []);
+
+  // Update full URL when server URL changes
+  useEffect(() => {
+    const url = serverUrl.endsWith('/start') ? serverUrl : `${serverUrl}/start`;
+    setFullUrl(url);
+  }, [serverUrl]);
+
+  // Load server configuration from AsyncStorage
+  const loadServerConfig = async () => {
+    try {
+      const url = await getServerUrl();
+      setServerUrl(url);
+    } catch (error) {
+      console.error('Failed to load server config:', error);
+    }
+  };
+
+  // Save server configuration
+  const handleSaveServerConfig = async () => {
+    // Validate input
+    if (!serverUrl.trim()) {
+      Alert.alert('Invalid Input', 'Server URL cannot be empty');
+      return;
+    }
+
+    setIsSavingConfig(true);
+    try {
+      await saveServerConfig(serverUrl.trim());
+      
+      // Reinitialize transport with new configuration
+      await reinitializeTransport();
+      
+      Alert.alert(
+        'Success',
+        'Server configuration saved successfully. The bot connection will be reinitialized.'
+      );
+    } catch (error) {
+      console.error('Failed to save server config:', error);
+      Alert.alert('Error', 'Failed to save server configuration');
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
 
   // Request Bluetooth permissions
   const requestBluetoothPermissions = async (): Promise<boolean> => {
@@ -698,6 +755,47 @@ const SettingsScreen: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Server Configuration Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Server Configuration</Text>
+          <Text style={styles.sectionDescription}>
+            Configure the bot server address and port. The /start path will be automatically appended.
+          </Text>
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Server URL</Text>
+            <TextInput
+              style={styles.input}
+              value={serverUrl}
+              onChangeText={setServerUrl}
+              placeholder="http://server:port"
+              placeholderTextColor="#BDBDBD"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+
+          <View style={styles.urlDisplayContainer}>
+            <Text style={styles.urlDisplayLabel}>Full URL:</Text>
+            <Text style={styles.urlDisplayText}>{fullUrl}</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.button, isSavingConfig && styles.buttonDisabled]}
+            onPress={handleSaveServerConfig}
+            disabled={isSavingConfig}
+          >
+            {isSavingConfig ? (
+              <>
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text style={styles.buttonText}>Saving...</Text>
+              </>
+            ) : (
+              <Text style={styles.buttonText}>Save Configuration</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
         {/* Connection Status Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Glasses Connection</Text>
@@ -803,7 +901,48 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#212121',
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  sectionDescription: {
+    fontSize: 14,
+    color: '#757575',
+    marginBottom: 16,
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#212121',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#FAFAFA',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#212121',
+  },
+  urlDisplayContainer: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  urlDisplayLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#757575',
+    marginBottom: 4,
+  },
+  urlDisplayText: {
+    fontSize: 14,
+    color: '#212121',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   connectionStatus: {
     fontSize: 14,
