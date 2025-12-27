@@ -27,8 +27,6 @@ interface GlassesConnectionContextType {
   connectionStatus: ConnectionStatus;
   error: string | null;
   sceneStatus: SceneStatusInfo | null;
-  sendAsrContent: (text: string) => void;
-  sendTtsContent: (text: string) => void;
 }
 
 const GlassesConnectionContext = createContext<GlassesConnectionContextType | null>(null);
@@ -197,8 +195,6 @@ export const GlassesConnectionProvider: React.FC<GlassesConnectionProviderProps>
     connectionStatus,
     error,
     sceneStatus,
-    sendAsrContent,
-    sendTtsContent,
   };
 
   return (

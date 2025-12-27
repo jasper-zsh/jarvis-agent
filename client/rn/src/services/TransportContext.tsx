@@ -4,6 +4,7 @@ import { RNSmallWebRTCTransport, MediaManager } from '@pipecat-ai/react-native-s
 import { DailyMediaManager } from '@pipecat-ai/react-native-daily-media-manager';
 import { useGlassesConnection } from './GlassesConnectionContext';
 import NativeRokidCxrClientM from 'react-native-rokid-cxr-client-m/src/NativeRokidCxrClientM';
+import { type SceneStatusInfo } from 'react-native-rokid-cxr-client-m/src/NativeRokidCxrClientM';
 import { createTransportConfig, getBotUrl } from '../config';
 import RokidCxrClientM from 'react-native-rokid-cxr-client-m';
 
@@ -26,7 +27,6 @@ export interface SystemEvent {
 }
 
 interface TransportContextType {
-  client: PipecatClient | null;
   connectionStatus: ConnectionStatus;
   transportState: TransportState | null;
   error: string | null;
@@ -46,15 +46,24 @@ interface TransportProviderProps {
 }
 
 export const TransportProvider: React.FC<TransportProviderProps> = ({ children }) => {
-  const [client, setClient] = useState<PipecatClient | null>(null);
+  const clientRef = useRef<PipecatClient | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
   const [transportState, setTransportState] = useState<TransportState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptMessage[]>([]);
   const [events, setEvents] = useState<SystemEvent[]>([]);
-  const { isConnected: glassesConnected, sceneStatus, sendAsrContent, sendTtsContent } = useGlassesConnection();
+  const { isConnected: glassesConnected, sceneStatus } = useGlassesConnection();
   const [currentBotUrl, setCurrentBotUrl] = useState<string>('');
   const [previousAiAssistRunning, setPreviousAiAssistRunning] = useState<boolean>(false);
+  
+  // Ref to track the current sceneStatus to avoid stale closure issues in callbacks
+  const sceneStatusRef = useRef<SceneStatusInfo | null>(sceneStatus);
+  
+  // Keep sceneStatusRef synchronized with sceneStatus state
+  useEffect(() => {
+    sceneStatusRef.current = sceneStatus;
+    console.log('TransportContext: sceneStatusRef updated:', sceneStatus);
+  }, [sceneStatus]);
 
   // State tracking for message replacement logic
   const [receivedFinalUserMessage, setReceivedFinalUserMessage] = useState<boolean>(false);
@@ -268,12 +277,12 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
           addEvent('connection', 'Disconnected from bot');
         },
         onError: (message) => {
-          if (connectionStatus === 'disconnected') {
+          const errorMessage = message.data?.toString() || 'Unknown error';
+          if (errorMessage.indexOf('Connection is already closed') >= 0) {
             return;
           }
           console.error('TransportContext: Error', message);
           setConnectionStatus('error');
-          const errorMessage = message.data?.toString() || 'Unknown error';
           setError(errorMessage);
           addEvent('error', errorMessage, message);
         },
@@ -319,9 +328,11 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
               setReceivedFinalUserMessage(true);
             }
             // Send ASR content to glasses when aiAssistant is running
-            if (sceneStatus?.aiAssistRunning) {
+            const currentSceneStatus = sceneStatusRef.current;
+            console.log('TransportContext: onUserTranscript - sceneStatus:', currentSceneStatus, 'aiAssistRunning:', currentSceneStatus?.aiAssistRunning);
+            if (currentSceneStatus?.aiAssistRunning) {
               console.log('TransportContext: Sending ASR content to glasses:', text);
-              sendAsrContent(text);
+              RokidCxrClientM.sendAsrContent(text);
             }
           }
         },
@@ -342,9 +353,11 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
             addTranscript('bot', text, final);
             addEvent('transcript', `Bot: ${text}`);
             // Send TTS content to glasses when aiAssistant is running
-            if (sceneStatus?.aiAssistRunning) {
+            const currentSceneStatus = sceneStatusRef.current;
+            console.log('TransportContext: onBotTranscript - sceneStatus:', currentSceneStatus, 'aiAssistRunning:', currentSceneStatus?.aiAssistRunning);
+            if (currentSceneStatus?.aiAssistRunning) {
               console.log('TransportContext: Sending TTS content to glasses:', text);
-              sendTtsContent(text);
+              RokidCxrClientM.sendTtsContent(text);
             }
           }
         },
@@ -362,18 +375,22 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
       // Register CloseWhenNothingToDo as a function call handler
       pipecatClient.registerFunctionCallHandler('CloseWhenNothingToDo', async () => {
         console.log('TransportContext: CloseWhenNothingToDo function called - disconnecting from pipecat');
+        
         RokidCxrClientM.sendExitEvent();
         try {
           await disconnect();
           console.log('TransportContext: Successfully disconnected via CloseWhenNothingToDo');
+          setConnectionStatus('disconnected');
+          setError(null);
           return { success: true };
         } catch (err) {
           console.error('TransportContext: Failed to disconnect via CloseWhenNothingToDo', err);
+          setError(err instanceof Error ? err.message : 'Failed to disconnect');
           return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
         }
       });
 
-      setClient(pipecatClient);
+      clientRef.current = pipecatClient;
       console.log('TransportContext: Client initialized successfully');
     } catch (err) {
       console.error('TransportContext: Failed to initialize client', err);
@@ -388,10 +405,10 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
       console.log('TransportContext: Re-initializing transport...');
       
       // Disconnect if connected
-      if (client && connectionStatus === 'connected') {
+      if (clientRef.current && connectionStatus === 'connected') {
         // Unregister function call handler before disconnecting
-        client.unregisterFunctionCallHandler('close_when_nothing_to_do');
-        await client.disconnect();
+        clientRef.current.unregisterFunctionCallHandler('close_when_nothing_to_do');
+        await clientRef.current.disconnect();
         console.log('TransportContext: Disconnected before re-initialization');
       }
 
@@ -412,11 +429,11 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
       setError('Failed to re-initialize transport');
       setConnectionStatus('error');
     }
-  }, [client, connectionStatus, initializeClient]);
+  }, [connectionStatus, initializeClient]);
 
   // Connect to bot
   const connect = useCallback(async () => {
-    if (!client) {
+    if (!clientRef.current) {
       console.error('TransportContext: Client not initialized');
       setError('Client not initialized');
       return;
@@ -428,7 +445,7 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
 
       // Start bot and connect with current config
       const config = configRef.current || await createTransportConfig();
-      await client.startBotAndConnect(config);
+      await clientRef.current.startBotAndConnect(config);
 
       console.log('TransportContext: Connected successfully');
     } catch (err) {
@@ -436,37 +453,41 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
       setError(err instanceof Error ? err.message : 'Failed to connect');
       setConnectionStatus('error');
     }
-  }, [client]);
+  }, []);
 
   // Disconnect from bot
   const disconnect = useCallback(async () => {
-    if (!client) {
+    console.log('TransportContext: disconnect called - client initialized:', !!clientRef.current, 'connectionStatus:', connectionStatus);
+    
+    if (!clientRef.current) {
+      const errorMsg = 'Client not initialized';
       console.warn('TransportContext: Client not initialized');
-      return;
+      throw new Error(errorMsg);
     }
 
     try {
       setConnectionStatus('disconnected');
       setError(null);
-
-      await client.disconnect();
-
+      await clientRef.current.disconnect();
       console.log('TransportContext: Disconnected successfully');
     } catch (err) {
       console.error('TransportContext: Failed to disconnect', err);
       setError(err instanceof Error ? err.message : 'Failed to disconnect');
+      throw err;  // Re-throw to propagate to caller
     }
-  }, [client]);
+  }, [connectionStatus]);
 
   // Handle scene status updates - connect to pipecat when aiAssistRunning changes from false to true
   useEffect(() => {
+    console.log('TransportContext: Scene status useEffect triggered - sceneStatus:', sceneStatus);
     if (!sceneStatus) {
+      console.log('TransportContext: Scene status is null, skipping');
       return;
     }
 
     const currentAiAssistRunning = sceneStatus.aiAssistRunning;
 
-    console.log('TransportContext: Scene status updated - aiAssistRunning:', currentAiAssistRunning);
+    console.log('TransportContext: Scene status updated - aiAssistRunning:', currentAiAssistRunning, 'previous:', previousAiAssistRunning);
 
     // Detect when aiAssistRunning changes from false to true
     if (currentAiAssistRunning && !previousAiAssistRunning) {
@@ -486,10 +507,10 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
 
     return () => {
       // Cleanup on unmount
-      if (client) {
+      if (clientRef.current) {
         // Unregister function call handler before disconnecting
-        client.unregisterFunctionCallHandler('close_when_nothing_to_do');
-        client.disconnect().catch((err) => {
+        clientRef.current.unregisterFunctionCallHandler('close_when_nothing_to_do');
+        clientRef.current.disconnect().catch((err) => {
           console.error('TransportContext: Failed to disconnect on unmount', err);
         });
       }
@@ -497,7 +518,6 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
   }, []); // Empty dependency array - initialize only once
 
   const contextValue: TransportContextType = {
-    client,
     connectionStatus,
     transportState,
     error,
