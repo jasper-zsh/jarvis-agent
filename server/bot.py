@@ -91,7 +91,7 @@ async def run_bot(transport: BaseTransport):
     messages = [
         {
             "role": "system",
-            "content": "You are a friendly AI assistant. Respond naturally and keep your answers conversational.",
+            "content": "你是一个AI助手，主要通过语音来与用户沟通，不要生成表情、Markdown语法符号等内容，保证你输出的内容符合口语风格",
         },
     ]
 

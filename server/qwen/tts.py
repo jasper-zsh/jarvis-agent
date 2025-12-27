@@ -1,6 +1,6 @@
 from loguru import logger
 from pipecat.services.ai_service import AIService
-from pipecat.frames.frames import LLMTextFrame, LLMFullResponseStartFrame, LLMFullResponseEndFrame, TTSAudioRawFrame
+from pipecat.frames.frames import TextFrame, LLMFullResponseStartFrame, LLMFullResponseEndFrame, TTSAudioRawFrame, TTSStartedFrame, TTSStoppedFrame, InterimTranscriptionFrame, TranscriptionFrame
 
 import dashscope
 from dashscope.audio.qwen_tts_realtime import *
@@ -24,6 +24,8 @@ class QwenTTSCallback(QwenTtsRealtimeCallback):
         match event_type:
             case 'session.created':
                 pass
+            case 'response.created':
+                asyncio.run_coroutine_threadsafe(self.service.push_frame(TTSStartedFrame()), self.loop)
             case 'response.audio.delta':
                 audio_b64 = message['delta']
                 audio_bytes = base64.b64decode(audio_b64)
@@ -35,7 +37,7 @@ class QwenTTSCallback(QwenTtsRealtimeCallback):
                 )), self.loop)
                 pass
             case 'response.done':
-                pass
+                asyncio.run_coroutine_threadsafe(self.service.push_frame(TTSStoppedFrame()), self.loop)
             case 'session.finished':
                 self.service.tts.close()
 
@@ -70,8 +72,12 @@ class QwenTTSService(AIService):
     async def process_frame(self, frame, direction):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, LLMTextFrame):
-            logger.info('Received LLMTextFrame')
+        if (
+            isinstance(frame, TextFrame)
+            and not isinstance(frame, InterimTranscriptionFrame)
+            and not isinstance(frame, TranscriptionFrame)
+        ):
+            logger.info('Received TextFrame')
             await self._send_text(frame)
         elif isinstance(frame, LLMFullResponseStartFrame):
             logger.info('Received LLMFullResponseStartFrame')
@@ -94,6 +100,6 @@ class QwenTTSService(AIService):
         logger.info('Stopping TTS')
         self.tts.finish()
 
-    async def _send_text(self, frame: LLMTextFrame):
+    async def _send_text(self, frame: TextFrame):
         logger.info(f'Sending text {frame.text} to TTS')
         self.tts.append_text(frame.text)
