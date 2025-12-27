@@ -2,7 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeEventEmitter, NativeModules } from 'react-native';
 import NativeRokidCxrClientM from 'react-native-rokid-cxr-client-m/src/NativeRokidCxrClientM';
-import { CxrBluetoothErrorCode } from 'react-native-rokid-cxr-client-m/src/NativeRokidCxrClientM';
+import { CxrBluetoothErrorCode, type SceneStatusInfo } from 'react-native-rokid-cxr-client-m/src/NativeRokidCxrClientM';
+import RokidCxrClientM from 'react-native-rokid-cxr-client-m';
 
 const PAIRED_DEVICE_STORAGE_KEY = '@jarvis:paired_glasses_device';
 
@@ -25,6 +26,9 @@ interface GlassesConnectionContextType {
   pairedDevice: PairedDevice | null;
   connectionStatus: ConnectionStatus;
   error: string | null;
+  sceneStatus: SceneStatusInfo | null;
+  sendAsrContent: (text: string) => void;
+  sendTtsContent: (text: string) => void;
 }
 
 const GlassesConnectionContext = createContext<GlassesConnectionContextType | null>(null);
@@ -38,6 +42,27 @@ export const GlassesConnectionProvider: React.FC<GlassesConnectionProviderProps>
   const [pairedDevice, setPairedDevice] = useState<PairedDevice | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [sceneStatus, setSceneStatus] = useState<SceneStatusInfo | null>(null);
+
+  // Send ASR content to glasses
+  const sendAsrContent = useCallback((text: string) => {
+    try {
+      NativeRokidCxrClientM.sendAsrContent(text);
+      console.log('GlassesConnectionContext: Sent ASR content to glasses:', text);
+    } catch (err) {
+      console.error('GlassesConnectionContext: Failed to send ASR content', err);
+    }
+  }, []);
+
+  // Send TTS content to glasses
+  const sendTtsContent = useCallback((text: string) => {
+    try {
+      NativeRokidCxrClientM.sendTtsContent(text);
+      console.log('GlassesConnectionContext: Sent TTS content to glasses:', text);
+    } catch (err) {
+      console.error('GlassesConnectionContext: Failed to send TTS content', err);
+    }
+  }, []);
 
   // Get error message from error code
   const getErrorMessage = useCallback((errorCode: CxrBluetoothErrorCode): string => {
@@ -149,36 +174,12 @@ export const GlassesConnectionProvider: React.FC<GlassesConnectionProviderProps>
 
     initialize();
 
-    // Set up event listeners for connection state changes
-    const connectedSubscription = RokidCxrEventEmitter.addListener(
-      'BluetoothOnConnected',
-      () => {
+    // Set up event listener for scene status updates
+    const sceneStatusSubscription = RokidCxrClientM.onSceneStatusUpdated(
+      (statusInfo: SceneStatusInfo) => {
         if (mounted) {
-          setIsConnected(true);
-          setConnectionStatus('connected');
-          setError(null);
-        }
-      }
-    );
-
-    const disconnectedSubscription = RokidCxrEventEmitter.addListener(
-      'BluetoothOnDisconnected',
-      () => {
-        if (mounted) {
-          setIsConnected(false);
-          setConnectionStatus('disconnected');
-          setError(null);
-        }
-      }
-    );
-
-    const failedSubscription = RokidCxrEventEmitter.addListener(
-      'BluetoothOnFailed',
-      (errorCode: CxrBluetoothErrorCode) => {
-        if (mounted) {
-          setIsConnected(false);
-          setConnectionStatus('error');
-          setError(getErrorMessage(errorCode));
+          console.log('GlassesConnectionContext: Scene status updated:', statusInfo);
+          setSceneStatus(statusInfo);
         }
       }
     );
@@ -186,9 +187,7 @@ export const GlassesConnectionProvider: React.FC<GlassesConnectionProviderProps>
     // Cleanup on unmount
     return () => {
       mounted = false;
-      connectedSubscription.remove();
-      disconnectedSubscription.remove();
-      failedSubscription.remove();
+      sceneStatusSubscription.remove();
     };
   }, [loadPairedDevice, checkCurrentConnection, connectToPairedDevice, getErrorMessage]);
 
@@ -197,6 +196,9 @@ export const GlassesConnectionProvider: React.FC<GlassesConnectionProviderProps>
     pairedDevice,
     connectionStatus,
     error,
+    sceneStatus,
+    sendAsrContent,
+    sendTtsContent,
   };
 
   return (

@@ -5,6 +5,7 @@ import { DailyMediaManager } from '@pipecat-ai/react-native-daily-media-manager'
 import { useGlassesConnection } from './GlassesConnectionContext';
 import NativeRokidCxrClientM from 'react-native-rokid-cxr-client-m/src/NativeRokidCxrClientM';
 import { createTransportConfig, getBotUrl } from '../config';
+import RokidCxrClientM from 'react-native-rokid-cxr-client-m';
 
 type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -51,8 +52,9 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
   const [error, setError] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<TranscriptMessage[]>([]);
   const [events, setEvents] = useState<SystemEvent[]>([]);
-  const { isConnected: glassesConnected } = useGlassesConnection();
+  const { isConnected: glassesConnected, sceneStatus, sendAsrContent, sendTtsContent } = useGlassesConnection();
   const [currentBotUrl, setCurrentBotUrl] = useState<string>('');
+  const [previousAiAssistRunning, setPreviousAiAssistRunning] = useState<boolean>(false);
 
   // State tracking for message replacement logic
   const [receivedFinalUserMessage, setReceivedFinalUserMessage] = useState<boolean>(false);
@@ -266,6 +268,9 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
           addEvent('connection', 'Disconnected from bot');
         },
         onError: (message) => {
+          if (connectionStatus === 'disconnected') {
+            return;
+          }
           console.error('TransportContext: Error', message);
           setConnectionStatus('error');
           const errorMessage = message.data?.toString() || 'Unknown error';
@@ -280,6 +285,7 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
         onBotReady: (botData) => {
           console.log('TransportContext: Bot ready', botData);
           addEvent('bot', 'Bot ready', botData);
+          RokidCxrClientM.sendAsrContent("")
         },
         onBotStartedSpeaking: () => {
           console.log('TransportContext: Bot started speaking');
@@ -312,6 +318,11 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
             if (final) {
               setReceivedFinalUserMessage(true);
             }
+            // Send ASR content to glasses when aiAssistant is running
+            if (sceneStatus?.aiAssistRunning) {
+              console.log('TransportContext: Sending ASR content to glasses:', text);
+              sendAsrContent(text);
+            }
           }
         },
         onBotOutput: (data) => {
@@ -330,6 +341,11 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
           if (text) {
             addTranscript('bot', text, final);
             addEvent('transcript', `Bot: ${text}`);
+            // Send TTS content to glasses when aiAssistant is running
+            if (sceneStatus?.aiAssistRunning) {
+              console.log('TransportContext: Sending TTS content to glasses:', text);
+              sendTtsContent(text);
+            }
           }
         },
       };
@@ -341,6 +357,20 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
         enableMic: true,
         enableCam: false,
         enableScreenShare: false,
+      });
+
+      // Register CloseWhenNothingToDo as a function call handler
+      pipecatClient.registerFunctionCallHandler('CloseWhenNothingToDo', async () => {
+        console.log('TransportContext: CloseWhenNothingToDo function called - disconnecting from pipecat');
+        RokidCxrClientM.sendExitEvent();
+        try {
+          await disconnect();
+          console.log('TransportContext: Successfully disconnected via CloseWhenNothingToDo');
+          return { success: true };
+        } catch (err) {
+          console.error('TransportContext: Failed to disconnect via CloseWhenNothingToDo', err);
+          return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+        }
       });
 
       setClient(pipecatClient);
@@ -359,6 +389,8 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
       
       // Disconnect if connected
       if (client && connectionStatus === 'connected') {
+        // Unregister function call handler before disconnecting
+        client.unregisterFunctionCallHandler('close_when_nothing_to_do');
         await client.disconnect();
         console.log('TransportContext: Disconnected before re-initialization');
       }
@@ -426,6 +458,28 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
     }
   }, [client]);
 
+  // Handle scene status updates - connect to pipecat when aiAssistRunning changes from false to true
+  useEffect(() => {
+    if (!sceneStatus) {
+      return;
+    }
+
+    const currentAiAssistRunning = sceneStatus.aiAssistRunning;
+
+    console.log('TransportContext: Scene status updated - aiAssistRunning:', currentAiAssistRunning);
+
+    // Detect when aiAssistRunning changes from false to true
+    if (currentAiAssistRunning && !previousAiAssistRunning) {
+      console.log('TransportContext: aiAssistRunning changed from false to true, connecting to pipecat');
+      connect().catch((err) => {
+        console.error('TransportContext: Failed to connect to pipecat on scene status change', err);
+      });
+    }
+
+    // Update the previous state
+    setPreviousAiAssistRunning(currentAiAssistRunning);
+  }, [sceneStatus, previousAiAssistRunning, connect]);
+
   // Initialize client on mount
   useEffect(() => {
     initializeClient();
@@ -433,6 +487,8 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
     return () => {
       // Cleanup on unmount
       if (client) {
+        // Unregister function call handler before disconnecting
+        client.unregisterFunctionCallHandler('close_when_nothing_to_do');
         client.disconnect().catch((err) => {
           console.error('TransportContext: Failed to disconnect on unmount', err);
         });

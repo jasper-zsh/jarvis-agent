@@ -50,6 +50,28 @@ class RokidCxrClientMModule(reactContext: ReactApplicationContext) :
     return NAME
   }
 
+  init {
+    CxrApi.getInstance().setSceneStatusUpdateListener {
+      val data = Arguments.createMap().apply {
+        putBoolean("aiAssistRunning", it.isAiAssistRunning)
+        putBoolean("aiChatRunning", it.isAiChatRunning)
+        putBoolean("audioRecordRunning", it.isAudioRecordRunning)
+        putBoolean("brightnessRunning", it.isBrightnessRunning)
+        putBoolean("hasDisplay", it.isHasDisplay)
+        putBoolean("navigationRunning", it.isNavigationRunning)
+        putBoolean("notesRunning", it.isNotesRunning)
+        putBoolean("otaRunning", it.isOtaRunning)
+        putBoolean("paymentRunning", it.isPaymentRunning)
+        putBoolean("phoneCallRunning", it.isPhoneCallRunning)
+        putBoolean("translateRunning", it.isTranslateRunning)
+        putBoolean("videoRecordRunning", it.isVideoRecordRunning)
+        putBoolean("wordTipsRunning", it.isWordTipsRunning)
+        putBoolean("customViewRunning", it.isCustomViewRunning)
+      }
+      emitOnSceneStatusUpdated(data)
+    }
+  }
+
   /**
    * Data class to hold discovered device information
    * Includes the native BluetoothDevice object for later use in connection
