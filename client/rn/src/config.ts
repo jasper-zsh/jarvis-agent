@@ -70,11 +70,6 @@ export async function createTransportConfig(): Promise<APIRequest> {
   
   const smallWebRTCConfig: APIRequest = {
     endpoint: botStartUrl,
-    requestData: {
-      createDailyRoom: false,
-      enableDefaultIceServers: true,
-      transport: 'webrtc',
-    },
   };
 
   if (botStartPublicApiKey) {

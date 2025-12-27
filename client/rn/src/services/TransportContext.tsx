@@ -394,9 +394,6 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
       setConnectionStatus('connecting');
       setError(null);
 
-      // Initialize devices
-      await client.initDevices();
-
       // Start bot and connect with current config
       const config = configRef.current || await createTransportConfig();
       await client.startBotAndConnect(config);
