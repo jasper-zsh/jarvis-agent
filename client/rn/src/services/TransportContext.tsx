@@ -13,6 +13,7 @@ export interface TranscriptMessage {
   role: 'user' | 'bot';
   text: string;
   timestamp: Date;
+  final?: boolean;
 }
 
 export interface SystemEvent {
@@ -53,9 +54,32 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
   const { isConnected: glassesConnected } = useGlassesConnection();
   const [currentBotUrl, setCurrentBotUrl] = useState<string>('');
 
+  // State tracking for message replacement logic
+  const [receivedFinalUserMessage, setReceivedFinalUserMessage] = useState<boolean>(false);
+  const [botStartedSpeaking, setBotStartedSpeaking] = useState<boolean>(false);
+  const [botStoppedSpeaking, setBotStoppedSpeaking] = useState<boolean>(false);
+
+  // Refs to avoid stale closure issues in addTranscript callback
+  const receivedFinalUserMessageRef = useRef<boolean>(receivedFinalUserMessage);
+  const botStartedSpeakingRef = useRef<boolean>(botStartedSpeaking);
+  const botStoppedSpeakingRef = useRef<boolean>(botStoppedSpeaking);
+
   const mediaManagerRef = useRef<MediaManager | null>(null);
   const transportRef = useRef<RNSmallWebRTCTransport | null>(null);
   const configRef = useRef<any>(null);
+
+  // Keep refs synchronized with state to avoid stale closure issues
+  useEffect(() => {
+    receivedFinalUserMessageRef.current = receivedFinalUserMessage;
+  }, [receivedFinalUserMessage]);
+
+  useEffect(() => {
+    botStartedSpeakingRef.current = botStartedSpeaking;
+  }, [botStartedSpeaking]);
+
+  useEffect(() => {
+    botStoppedSpeakingRef.current = botStoppedSpeaking;
+  }, [botStoppedSpeaking]);
 
   // Handle audio routing based on glasses connection state
   const handleAudioRouting = useCallback(async (glassesConnected: boolean) => {
@@ -92,15 +116,106 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
   }, []);
 
   // Add transcript message
-  const addTranscript = useCallback((role: 'user' | 'bot', text: string) => {
-    const newMessage: TranscriptMessage = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      role,
-      text,
-      timestamp: new Date(),
-    };
-    setTranscripts((prev) => [...prev, newMessage]);
-  }, []);
+  const addTranscript = useCallback((role: 'user' | 'bot', text: string, final: boolean = true) => {
+    console.log('TransportContext: addTranscript called - role:', role, 'final:', final, 'text:', text);
+    setTranscripts((prev) => {
+      console.log('TransportContext: addTranscript - current messages count:', prev.length);
+      
+      // Handle user messages
+      if (role === 'user') {
+        // Check if we should create a new user message (after final user message + bot started speaking)
+        const shouldCreateNewUserMessage = receivedFinalUserMessageRef.current;
+
+        if (shouldCreateNewUserMessage) {
+          setReceivedFinalUserMessage(false);
+        }
+        
+        // Find the last user message index
+        let lastUserMessageIndex = -1;
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].role === 'user') {
+            lastUserMessageIndex = i;
+            break;
+          }
+        }
+        
+        if (lastUserMessageIndex !== -1 && !shouldCreateNewUserMessage) {
+          const lastUserMessage = prev[lastUserMessageIndex];
+          console.log('TransportContext: addTranscript - last user message:', {
+            text: lastUserMessage.text,
+            final: lastUserMessage.final,
+            shouldCreateNewUserMessage
+          });
+          
+          // Replace the last user message
+          console.log('TransportContext: addTranscript - REPLACING last user message');
+          const updated = [...prev];
+          updated[lastUserMessageIndex] = {
+            ...lastUserMessage,
+            text,
+            timestamp: new Date(),
+            final,
+          };
+          return updated;
+        } else {
+          console.log('TransportContext: addTranscript - CREATING new user message, shouldCreateNewUserMessage:', shouldCreateNewUserMessage);
+        }
+      }
+      
+      // Handle bot messages
+      if (role === 'bot') {
+        // Check if we should create a new bot message (after bot stopped speaking)
+        const shouldCreateNewBotMessage = botStoppedSpeakingRef.current;
+        
+        // If we should create a new message, reset the flag
+        if (shouldCreateNewBotMessage && final) {
+          setBotStoppedSpeaking(false);
+        }
+        
+        // Find the last bot message index
+        let lastBotMessageIndex = -1;
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].role === 'bot') {
+            lastBotMessageIndex = i;
+            break;
+          }
+        }
+        
+        if (lastBotMessageIndex !== -1 && !shouldCreateNewBotMessage) {
+          const lastBotMessage = prev[lastBotMessageIndex];
+          console.log('TransportContext: addTranscript - last bot message:', {
+            text: lastBotMessage.text,
+            final: lastBotMessage.final,
+            shouldCreateNewBotMessage
+          });
+          
+          // Append to the last bot message
+          console.log('TransportContext: addTranscript - APPENDING to last bot message');
+          const updated = [...prev];
+          updated[lastBotMessageIndex] = {
+            ...lastBotMessage,
+            text: lastBotMessage.text + text,
+            timestamp: new Date(),
+            final,
+          };
+          return updated;
+        } else {
+          console.log('TransportContext: addTranscript - CREATING new bot message, shouldCreateNewBotMessage:', shouldCreateNewBotMessage);
+        }
+      }
+      
+      console.log('TransportContext: addTranscript - CREATING new message');
+      // Otherwise, add a new message
+      const newMessage: TranscriptMessage = {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        role,
+        text,
+        timestamp: new Date(),
+        final,
+      };
+      return [...prev, newMessage];
+    });
+  }, []); // Empty dependency array - using refs to avoid stale closure
 
   // Clear transcripts
   const clearTranscripts = useCallback(() => {
@@ -168,10 +283,12 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
         },
         onBotStartedSpeaking: () => {
           console.log('TransportContext: Bot started speaking');
+          setBotStartedSpeaking(true);
           addEvent('bot', 'Bot started speaking');
         },
         onBotStoppedSpeaking: () => {
           console.log('TransportContext: Bot stopped speaking');
+          setBotStoppedSpeaking(true);
           addEvent('bot', 'Bot stopped speaking');
         },
         onUserStartedSpeaking: () => {
@@ -184,25 +301,34 @@ export const TransportProvider: React.FC<TransportProviderProps> = ({ children }
         },
         onUserTranscript: (data) => {
           console.log('TransportContext: User transcript', data);
+          console.log('TransportContext: User transcript - final field:', (data as any).final);
           const text = data.text || '';
+          const final = (data as any).final !== undefined ? (data as any).final : true;
+          console.log('TransportContext: User transcript - parsed final:', final, 'text:', text);
           if (text) {
-            addTranscript('user', text);
+            addTranscript('user', text, final);
             addEvent('transcript', `User: ${text}`);
+            // Track when we receive a final user message
+            if (final) {
+              setReceivedFinalUserMessage(true);
+            }
           }
         },
         onBotOutput: (data) => {
           console.log('TransportContext: Bot output', data);
           const text = data.text || '';
+          const final = (data as any).final !== undefined ? (data as any).final : true;
           if (text) {
-            addTranscript('bot', text);
+            addTranscript('bot', text, final);
             addEvent('transcript', `Bot: ${text}`);
           }
         },
         onBotTranscript: (data) => {
           console.log('TransportContext: Bot transcript', data);
           const text = data.text || '';
+          const final = (data as any).final !== undefined ? (data as any).final : true;
           if (text) {
-            addTranscript('bot', text);
+            addTranscript('bot', text, final);
             addEvent('transcript', `Bot: ${text}`);
           }
         },
