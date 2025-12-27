@@ -145,6 +145,18 @@ async def run_bot(transport: BaseTransport):
             properties={},
             required=[],
         ))
+        tools.standard_tools.append(FunctionSchema(
+            name='SetBrightness',
+            description='Set brightness of the glasses. If user said change brightness, it means change brightness of the glasses, you should call this function.',
+            properties={
+                'value': {
+                    'type': 'integer',
+                    'min': 1,
+                    'max': 15
+                }
+            },
+            required=['value']
+        ))
         await rtvi.set_bot_ready()
 
     @transport.event_handler("on_client_connected")
