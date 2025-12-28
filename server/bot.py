@@ -49,6 +49,7 @@ from qwen.asr import QwenASRService
 from qwen.tts import QwenTTSService
 from jarvis.client import ClientSideTools, RegisterClientSideToolsFrame
 from pipecat.adapters.schemas.function_schema import FunctionSchema
+from pipecat.adapters.schemas.tools_schema import ToolsSchema
 
 load_dotenv(override=True)
 
@@ -78,7 +79,7 @@ async def run_bot(transport: BaseTransport):
         api_key=os.getenv("OPENAI_API_KEY")
     )
 
-    mcp = MCPClient(
+    ha_mcp = MCPClient(
         server_params=StreamableHttpParameters(
             url=f'{os.getenv('HOMEASSISTANT_BASE_URL')}/api/mcp',
             headers={
@@ -86,7 +87,17 @@ async def run_bot(transport: BaseTransport):
             }
         )
     )
-    tools = await mcp.register_tools(llm)
+    ha_tools = await ha_mcp.register_tools(llm)
+
+    websearch = MCPClient(
+        server_params=StreamableHttpParameters(
+            url='https://open.bigmodel.cn/api/mcp/web_search_prime/mcp',
+            headers={
+                'Authorization': f'Bearer {os.getenv('GLM_API_KEY')}'
+            }
+        )
+    )
+    websearch_tools = await websearch.register_tools(llm)
 
     messages = [
         {
@@ -95,9 +106,34 @@ async def run_bot(transport: BaseTransport):
         },
     ]
 
+    all_tools = ToolsSchema(
+        standard_tools=[
+            *ha_tools.standard_tools,
+            *websearch_tools.standard_tools,
+            FunctionSchema(
+                name='CloseWhenNothingToDo',
+                description='Call this function when you have nothing to do and want to say goodbye',
+                properties={},
+                required=[],
+            ),
+            FunctionSchema(
+                name='SetBrightness',
+                description='Set brightness of the glasses. If user said change brightness, it means change brightness of the glasses, you should call this function.',
+                properties={
+                    'value': {
+                        'type': 'integer',
+                        'min': 1,
+                        'max': 15
+                    }
+                },
+                required=['value']
+            )
+        ],
+    )
+
     context = LLMContext(
         messages,
-        tools,
+        all_tools,
     )
     context_aggregator = LLMContextAggregatorPair(context)
 
@@ -139,24 +175,6 @@ async def run_bot(transport: BaseTransport):
 
     @rtvi.event_handler("on_client_ready")
     async def on_client_ready(rtvi: RTVIProcessor):
-        tools.standard_tools.append(FunctionSchema(
-            name='CloseWhenNothingToDo',
-            description='Call this function when you have nothing to do and want to say goodbye',
-            properties={},
-            required=[],
-        ))
-        tools.standard_tools.append(FunctionSchema(
-            name='SetBrightness',
-            description='Set brightness of the glasses. If user said change brightness, it means change brightness of the glasses, you should call this function.',
-            properties={
-                'value': {
-                    'type': 'integer',
-                    'min': 1,
-                    'max': 15
-                }
-            },
-            required=['value']
-        ))
         await rtvi.set_bot_ready()
 
     @transport.event_handler("on_client_connected")
@@ -176,7 +194,7 @@ async def run_bot(transport: BaseTransport):
                 line = f"{timestamp}{msg.role}: {msg.content}"
                 logger.info(f"Transcript: {line}")
 
-    runner = PipelineRunner(handle_sigint=False)
+    runner = PipelineRunner(handle_sigint=True, handle_sigterm=True)
 
     await runner.run(task)
 
