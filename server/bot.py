@@ -54,6 +54,29 @@ from pipecat.adapters.schemas.tools_schema import ToolsSchema
 load_dotenv(override=True)
 
 
+def load_system_prompt() -> str:
+    """Load system prompt from system_prompt.md file.
+    
+    Returns:
+        The system prompt content, or a default prompt if the file doesn't exist or can't be read.
+    """
+    default_prompt = "你是一个AI助手，主要通过语音来与用户沟通，不要生成表情、Markdown语法符号等内容，保证你输出的内容符合口语风格"
+    prompt_file = os.path.join(os.path.dirname(__file__), "system_prompt.md")
+    
+    try:
+        with open(prompt_file, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            # Remove markdown headers if present (lines starting with #)
+            lines = [line for line in content.split("\n") if not line.strip().startswith("#")]
+            return "\n".join(lines).strip() or default_prompt
+    except FileNotFoundError:
+        logger.warning(f"System prompt file not found: {prompt_file}. Using default prompt.")
+        return default_prompt
+    except Exception as e:
+        logger.error(f"Error reading system prompt file: {e}. Using default prompt.")
+        return default_prompt
+
+
 async def run_bot(transport: BaseTransport):
     """Main bot logic."""
     logger.info("Starting bot")
@@ -99,10 +122,14 @@ async def run_bot(transport: BaseTransport):
     )
     websearch_tools = await websearch.register_tools(llm)
 
+    # Load system prompt from file
+    system_prompt = load_system_prompt()
+    logger.info(f"Loaded system prompt: {system_prompt[:50]}...")
+    
     messages = [
         {
             "role": "system",
-            "content": "你是一个AI助手，主要通过语音来与用户沟通，不要生成表情、Markdown语法符号等内容，保证你输出的内容符合口语风格",
+            "content": system_prompt,
         },
     ]
 
@@ -194,7 +221,7 @@ async def run_bot(transport: BaseTransport):
                 line = f"{timestamp}{msg.role}: {msg.content}"
                 logger.info(f"Transcript: {line}")
 
-    runner = PipelineRunner(handle_sigint=True, handle_sigterm=True)
+    runner = PipelineRunner(handle_sigint=False)
 
     await runner.run(task)
 
