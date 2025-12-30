@@ -65,4 +65,4 @@ EXPOSE 7860
 #       args: ["arg1", "arg2", "arg3"]
 #
 # Running without arguments still works (backward compatible)
-ENTRYPOINT ["python", "bot.py"]
+ENTRYPOINT ["python", "server.py"]
