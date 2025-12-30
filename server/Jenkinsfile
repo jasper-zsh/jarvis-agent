@@ -11,7 +11,10 @@ pipeline {
     stages {
         stage('Build and Push Docker Image') {
             when {
-                changeset "server/**"
+                anyOf {
+                    changeset "server/**"
+                    expression { return currentBuild.changeSets.isEmpty() }
+                }
             }
             steps {
                 container('kaniko') {
