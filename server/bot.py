@@ -33,7 +33,7 @@ from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
-from pipecat.processors.frameworks.rtvi import RTVIObserver, RTVIProcessor
+from pipecat.processors.frameworks.rtvi import RTVIObserver, RTVIProcessor, RTVIClientMessage
 from pipecat.processors.transcript_processor import TranscriptProcessor
 from pipecat.runner.types import RunnerArguments, SmallWebRTCRunnerArguments
 from pipecat.services.mcp_service import MCPClient
@@ -50,6 +50,7 @@ from qwen.tts import QwenTTSService
 from jarvis.client import ClientSideTools, RegisterClientSideToolsFrame
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
+from llm.image_analyzer import ImageAnalyzer
 
 load_dotenv(override=True)
 
@@ -122,6 +123,12 @@ async def run_bot(transport: BaseTransport):
     )
     websearch_tools = await websearch.register_tools(llm)
 
+    image_analyzer = ImageAnalyzer(
+        base_url=os.getenv("OPENAI_BASE_URL"),
+        api_key=os.getenv('GLM_API_KEY'),
+        model='glm-4.6v'
+    )
+
     # Load system prompt from file
     system_prompt = load_system_prompt()
     logger.info(f"Loaded system prompt: {system_prompt[:50]}...")
@@ -154,6 +161,25 @@ async def run_bot(transport: BaseTransport):
                     }
                 },
                 required=['value']
+            ),
+            FunctionSchema(
+                name='TakePhoto',
+                description='在用户的视角拍一张照片。',
+                properties={},
+                required=[],
+            ),
+            FunctionSchema(
+                name='AnalyzeImage',
+                description='Analyze image content. image_uuid is the uuid result you use TakePhoto to generate before, prompts is what you want to analyze with this photo. A photo can only be analyzed for 1 times.',
+                properties={
+                    'image_uuid': {
+                        'type': 'string',
+                    },
+                    'prompts': {
+                        'type': 'string',
+                    },
+                },
+                required=['image_uuid', 'prompts']
             )
         ],
     )
@@ -169,6 +195,7 @@ async def run_bot(transport: BaseTransport):
 
     rtvi = RTVIProcessor()
 
+    llm.register_function('AnalyzeImage', image_analyzer.handle_function_call)
     llm.register_function(None, rtvi.handle_function_call)
 
     # Pipeline - assembled from reusable components
@@ -203,6 +230,15 @@ async def run_bot(transport: BaseTransport):
     @rtvi.event_handler("on_client_ready")
     async def on_client_ready(rtvi: RTVIProcessor):
         await rtvi.set_bot_ready()
+
+    @rtvi.event_handler("on_client_message")
+    async def on_client_message(_, msg: RTVIClientMessage):
+        match msg.type:
+            case 'pic-result':
+                image_analyzer.push_image(msg.data['uuid'], msg.data['data'])
+                logger.info('Got pic-result, saved to cache')
+            case _:
+                logger.info(f'Received unknown type of client message: {msg.type}')
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
