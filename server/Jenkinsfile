@@ -22,7 +22,7 @@ pipeline {
                         sh """
                         /kaniko/executor \
                             --dockerfile=Dockerfile \
-                            --context=dir://workspace/server \
+                            --context=dir://./server \
                             --destination=${DOCKER_IMAGE}:${DOCKER_TAG} \
                             --cache=true \
                             --cache-dir=/cache \
