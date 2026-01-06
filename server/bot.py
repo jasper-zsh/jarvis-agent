@@ -35,19 +35,16 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.frameworks.rtvi import RTVIObserver, RTVIProcessor, RTVIClientMessage
 from pipecat.processors.transcript_processor import TranscriptProcessor
-from pipecat.runner.types import RunnerArguments, WebSocketRunnerArguments
 from pipecat.services.mcp_service import MCPClient
 from mcp.client.session_group import StreamableHttpParameters
 from pipecat.services.openai.llm import OpenAILLMService
-from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketTransport, FastAPIWebsocketParams, FastAPIWebsocketClient
+from pipecat.serializers.protobuf import ProtobufFrameSerializer
 from pipecat_tail.observer import TailObserver
 from pipecat_whisker import WhiskerObserver
 
 from qwen.asr import QwenASRService
 from qwen.tts import QwenTTSService
-from jarvis.client import ClientSideTools, RegisterClientSideToolsFrame
-from jarvis.serializer import JSONFrameSerializer
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from llm.image_analyzer import ImageAnalyzer
@@ -87,7 +84,7 @@ async def run_bot(websocket_client: FastAPIWebsocketClient):
             add_wav_header=False,
             vad_analyzer=SileroVADAnalyzer(),
             turn_analyzer=LocalSmartTurnAnalyzerV3(),
-            serializer=JSONFrameSerializer(),
+            serializer=ProtobufFrameSerializer(),
         )
     )
 

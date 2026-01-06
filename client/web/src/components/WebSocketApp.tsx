@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PipecatClient } from '@pipecat-ai/client-js';
-import { WebSocketTransport } from '@pipecat-ai/websocket-transport';
+import { ProtobufFrameSerializer, WebSocketTransport } from '@pipecat-ai/websocket-transport';
 import { WavMediaManager } from '@pipecat-ai/websocket-transport';
 import { PipecatClientProvider } from '@pipecat-ai/client-react';
 import {
@@ -11,6 +11,7 @@ import {
 } from '@pipecat-ai/voice-ui-kit';
 import { ConversationProvider } from '@pipecat-ai/voice-ui-kit';
 import { WEBSOCKET_URL } from '../config';
+import { JSONFrameSerializer } from '../utils/serializer';
 
 interface WebSocketAppProps {
   onConnect?: () => void;
@@ -25,18 +26,17 @@ export const WebSocketApp = ({ onConnect, onDisconnect }: WebSocketAppProps) => 
   useEffect(() => {
     const initClient = async () => {
       try {
-        const mediaManager = new WavMediaManager();
+        const mediaManager = new WavMediaManager(16000*2/20, 16000);
         const transport = new WebSocketTransport({
           mediaManager,
           wsUrl: WEBSOCKET_URL,
+          serializer: new ProtobufFrameSerializer(),
+          recorderSampleRate: 16000
         });
 
         const pipecatClient = new PipecatClient({
           transport,
         });
-
-        // Initialize devices first
-        await transport.initDevices();
         
         setClient(pipecatClient);
       } catch (err) {
