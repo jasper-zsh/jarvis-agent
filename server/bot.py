@@ -35,19 +35,19 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.frameworks.rtvi import RTVIObserver, RTVIProcessor, RTVIClientMessage
 from pipecat.processors.transcript_processor import TranscriptProcessor
-from pipecat.runner.types import RunnerArguments, SmallWebRTCRunnerArguments
+from pipecat.runner.types import RunnerArguments, WebSocketRunnerArguments
 from pipecat.services.mcp_service import MCPClient
 from mcp.client.session_group import StreamableHttpParameters
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
-from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
-from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
+from pipecat.transports.websocket.fastapi import FastAPIWebsocketTransport, FastAPIWebsocketParams, FastAPIWebsocketClient
 from pipecat_tail.observer import TailObserver
 from pipecat_whisker import WhiskerObserver
 
 from qwen.asr import QwenASRService
 from qwen.tts import QwenTTSService
 from jarvis.client import ClientSideTools, RegisterClientSideToolsFrame
+from jarvis.serializer import JSONFrameSerializer
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from llm.image_analyzer import ImageAnalyzer
@@ -78,7 +78,19 @@ def load_system_prompt() -> str:
         return default_prompt
 
 
-async def run_bot(transport: BaseTransport):
+async def run_bot(websocket_client: FastAPIWebsocketClient):
+    transport = FastAPIWebsocketTransport(
+        websocket=websocket_client,
+        params=FastAPIWebsocketParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            add_wav_header=False,
+            vad_analyzer=SileroVADAnalyzer(),
+            turn_analyzer=LocalSmartTurnAnalyzerV3(),
+            serializer=JSONFrameSerializer(),
+        )
+    )
+
     """Main bot logic."""
     logger.info("Starting bot")
 
@@ -260,36 +272,3 @@ async def run_bot(transport: BaseTransport):
     runner = PipelineRunner(handle_sigint=False)
 
     await runner.run(task)
-
-
-async def bot(runner_args: RunnerArguments):
-    """Main bot entry point."""
-
-    transport = None
-
-    match runner_args:
-        case SmallWebRTCRunnerArguments():
-            webrtc_connection: SmallWebRTCConnection = runner_args.webrtc_connection
-
-            transport = SmallWebRTCTransport(
-                webrtc_connection=webrtc_connection,
-                params=TransportParams(
-                    audio_in_enabled=True,
-                    audio_out_enabled=True,
-                    audio_in_channels=1,
-                    audio_in_sample_rate=16000,
-                    vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
-                    turn_analyzer=LocalSmartTurnAnalyzerV3(),
-                ),
-            )
-        case _:
-            logger.error(f"Unsupported runner arguments type: {type(runner_args)}")
-            return
-
-    await run_bot(transport)
-
-
-if __name__ == "__main__":
-    from pipecat.runner.run import main
-
-    main()
