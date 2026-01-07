@@ -48,6 +48,7 @@ from qwen.tts import QwenTTSService
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from llm.image_analyzer import ImageAnalyzer
+from jarvis.serializer import JSONFrameSerializer
 
 load_dotenv(override=True)
 
@@ -84,7 +85,7 @@ async def run_bot(websocket_client: FastAPIWebsocketClient):
             add_wav_header=False,
             vad_analyzer=SileroVADAnalyzer(),
             turn_analyzer=LocalSmartTurnAnalyzerV3(),
-            serializer=ProtobufFrameSerializer(),
+            serializer=JSONFrameSerializer(),
         )
     )
 

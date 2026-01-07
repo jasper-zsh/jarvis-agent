@@ -36,8 +36,7 @@ export class JSONFrameSerializer implements WebSocketSerializer {
     }
     try {
       const frameData = this._frameToDict(frame);
-      const jsonStr = JSON.stringify(frameData);
-      return jsonStr;
+      return JSON.stringify(frameData);
     } catch (e) {
       console.error(`Failed to serialize frame ${frame.constructor.name}:`, e);
       return null;
@@ -63,20 +62,24 @@ export class JSONFrameSerializer implements WebSocketSerializer {
     return new Promise((resolve) => {
       try {
         const frameDict = typeof data === 'string' ? JSON.parse(data) : data;
-        const frame = this._dictToFrame(frameDict);
+        let frame: any;
         
-        // Determine the type of data and return appropriate format
-        if (frame && frame.__type__ === 'audio') {
+        // Check for special type markers
+        const frameType = frameDict["___type___"];
+        if (frameType === 'audio') {
+          const deserialized = this._deserializeAudio(frameDict);
           resolve({
             type: "audio",
-            audio: frame.audio as Int16Array
+            audio: deserialized.audio as Int16Array
           });
-        } else if (frame && frame.__type__ === 'message') {
+        } else if (frameType === 'message') {
           resolve({
             type: "message",
-            message: frame as RTVIMessage
+            message: frameDict.message as RTVIMessage
           });
         } else {
+          console.log('deserialize raw', data)
+          frame = this._dictToFrame(frameDict);
           resolve({
             type: "raw",
             message: frame
@@ -100,17 +103,20 @@ export class JSONFrameSerializer implements WebSocketSerializer {
    * Serialize audio data for transmission.
    *
    * @param data - Audio data as ArrayBuffer.
-   * @param sampleRate - Sample rate in Hz.
-   * @param numChannels - Number of audio channels.
+   * @param sample_rate - Sample rate in Hz.
+   * @param num_channels - Number of audio channels.
    * @returns Serialized audio data.
    */
-  serializeAudio(data: ArrayBuffer, sampleRate: number, numChannels: number): any {
-    return {
-      __type__: "audio",
-      audio: Array.from(new Int16Array(data)),
-      sampleRate,
-      numChannels
+  serializeAudio(data: ArrayBuffer, sample_rate: number, num_channels: number): any {
+    const uint8Array = new Uint8Array(data);
+    const audioBase64 = btoa(String.fromCharCode(...uint8Array));
+    const frame = {
+      ___type___: 'audio',
+      audio: audioBase64,
+      sample_rate,
+      num_channels
     };
+    return JSON.stringify(frame);
   }
 
   /**
@@ -120,9 +126,32 @@ export class JSONFrameSerializer implements WebSocketSerializer {
    * @returns Serialized message data.
    */
   serializeMessage(msg: RTVIMessage): any {
-    return {
-      __type__: "message",
+    const frame = {
+      ___type___: 'message',
       message: msg
+    };
+    return JSON.stringify(frame);
+  }
+
+  /**
+   * Deserialize an audio frame from JSON format.
+   *
+   * @param frameDict - Dictionary containing serialized audio data.
+   * @returns Reconstructed audio frame with Int16Array audio data.
+   */
+  private _deserializeAudio(frameDict: any): any {
+    // Decode base64 string back to Int16Array
+    const binaryString = atob(frameDict.audio);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const int16Array = new Int16Array(bytes.buffer);
+    
+    return {
+      audio: int16Array,
+      sampleRate: frameDict.sampleRate,
+      numChannels: frameDict.numChannels
     };
   }
 
@@ -134,22 +163,8 @@ export class JSONFrameSerializer implements WebSocketSerializer {
    */
   private _frameToDict(frame: any): Record<string, any> {
     const frameDict: Record<string, any> = {
-      "___type___": frame.constructor.name,
+      "___frame___": frame.constructor.name,
     };
-
-    // Only serialize module if it's not from pipecat.frames.frames
-    // In TypeScript/JavaScript, we use the constructor.name and module info if available
-    if (frame.constructor.name && frame.constructor.name !== "Object") {
-      // Try to get module information from constructor
-      const constructorString = frame.constructor.toString();
-      if (constructorString && !constructorString.includes("class Object")) {
-        // Store module info if we can determine it's not a standard frame
-        // This is a simplified approach - in practice, you may need more sophisticated module detection
-        if (frame.__module__ && frame.__module__ !== "pipecat.frames.frames") {
-          frameDict["module"] = frame.__module__;
-        }
-      }
-    }
 
     // Handle base Frame fields
     if (Object.prototype.hasOwnProperty.call(frame, "id")) {
@@ -204,8 +219,7 @@ export class JSONFrameSerializer implements WebSocketSerializer {
    * @returns Reconstructed Frame object, or null if frame type is unknown.
    */
   private _dictToFrame(frameDict: Record<string, any>): any | null {
-    const frameTypeName = frameDict["___type___"];
-    const frameModule = frameDict["module"] || "pipecat.frames.frames";
+    const frameTypeName = frameDict["___frame___"];
 
     if (!frameTypeName) {
       console.error("Invalid frame dict: missing type");
@@ -222,7 +236,7 @@ export class JSONFrameSerializer implements WebSocketSerializer {
       for (const key in frameDict) {
         if (Object.prototype.hasOwnProperty.call(frameDict, key)) {
           // Skip special fields and markers
-          if (key === "___type___" || key === "module" || key.startsWith("___") || key.startsWith("__")) {
+          if (key === "___frame___" || key.startsWith("___") || key.startsWith("__")) {
             continue;
           }
 
@@ -295,7 +309,7 @@ export class JSONFrameSerializer implements WebSocketSerializer {
       return value.map((item) => this._serializeValue(item));
     } else if (typeof value === "object" && value !== null) {
       // Check if this is a frame-like object with type information
-      if ("___type___" in value) {
+      if ("___frame___" in value) {
         return this._frameToDict(value);
       } else {
         // Handle regular objects
@@ -338,7 +352,7 @@ export class JSONFrameSerializer implements WebSocketSerializer {
       const deserializedList: any[] = [];
       for (const item of value) {
         // Check if item is a serialized frame/dataclass
-        if (typeof item === "object" && item !== null && "___type___" in item) {
+        if (typeof item === "object" && item !== null && "___frame___" in item) {
           deserializedList.push(this._dictToFrame(item));
         } else {
           deserializedList.push(this._deserializeValue(item));
@@ -352,7 +366,7 @@ export class JSONFrameSerializer implements WebSocketSerializer {
       return deserializedList;
     } else if (typeof value === "object" && value !== null) {
       // Check if this is a serialized frame
-      if ("___type___" in value) {
+      if ("___frame___" in value) {
         return this._dictToFrame(value);
       } else {
         const result: Record<string, any> = {};

@@ -12,6 +12,12 @@ from typing import Any, Dict, Optional
 
 from loguru import logger
 
+from pipecat.frames.frames import (
+    InputAudioRawFrame,
+    OutputAudioRawFrame,
+    OutputTransportMessageFrame,
+    OutputTransportMessageUrgentFrame,
+)
 from pipecat.serializers.base_serializer import FrameSerializer, FrameSerializerType
 
 
@@ -49,7 +55,14 @@ class JSONFrameSerializer(FrameSerializer):
         if frame is None:
             return None
         try:
-            frame_data = self._frame_to_dict(frame)
+            # Special handling for audio frames
+            if isinstance(frame, OutputAudioRawFrame):
+                frame_data = self._serialize_audio(frame)
+            # Special handling for transport message frames
+            elif isinstance(frame, (OutputTransportMessageFrame, OutputTransportMessageUrgentFrame)):
+                frame_data = self._serialize_message(frame)
+            else:
+                frame_data = self._frame_to_dict(frame)
             json_str = json.dumps(frame_data)
             return json_str
         except Exception as e:
@@ -67,7 +80,14 @@ class JSONFrameSerializer(FrameSerializer):
         """
         try:
             frame_dict = json.loads(data)
-            frame = self._dict_to_frame(frame_dict)
+            # Check for special type markers
+            frame_type = frame_dict.get("___type___")
+            if frame_type == "audio":
+                frame = self._deserialize_audio(frame_dict)
+            elif frame_type == "message":
+                frame = self._deserialize_message(frame_dict)
+            else:
+                frame = self._dict_to_frame(frame_dict)
             return frame
         except json.JSONDecodeError as e:
             logger.error(f"Failed to decode JSON data: {e}")
@@ -86,12 +106,8 @@ class JSONFrameSerializer(FrameSerializer):
             Dictionary containing frame data with type and fields.
         """
         frame_dict = {
-            "___type___": frame.__class__.__name__,
+            "___frame___": frame.__class__.__name__,
         }
-        
-        # Only serialize module if it's not from pipecat.frames.frames
-        if frame.__class__.__module__ != "pipecat.frames.frames":
-            frame_dict["module"] = frame.__class__.__module__
 
         # Handle base Frame fields
         if hasattr(frame, "id"):
@@ -144,6 +160,66 @@ class JSONFrameSerializer(FrameSerializer):
 
         return frame_dict
 
+    def _serialize_audio(self, frame: OutputAudioRawFrame) -> Dict[str, Any]:
+        """Serialize an audio frame to JSON format.
+
+        Args:
+            frame: The audio frame to serialize.
+
+        Returns:
+            Dictionary containing serialized audio data.
+        """
+        return {
+            "___type___": "audio",
+            "audio": base64.b64encode(frame.audio).decode("utf-8"),
+            "sample_rate": frame.sample_rate,
+            "num_channels": frame.num_channels,
+        }
+
+    def _serialize_message(self, frame: Any) -> Dict[str, Any]:
+        """Serialize a transport message frame to JSON format.
+
+        Args:
+            frame: The transport message frame to serialize.
+
+        Returns:
+            Dictionary containing serialized message data.
+        """
+        return {
+            "___type___": "message",
+            "message": frame.message,
+        }
+
+    def _deserialize_audio(self, frame_dict: Dict[str, Any]) -> OutputAudioRawFrame:
+        """Deserialize an audio frame from JSON format.
+
+        Args:
+            frame_dict: Dictionary containing serialized audio data.
+
+        Returns:
+            Reconstructed OutputAudioRawFrame instance.
+        """
+        audio_bytes = base64.b64decode(frame_dict["audio"])
+        return InputAudioRawFrame(
+            audio=audio_bytes,
+            sample_rate=frame_dict["sample_rate"],
+            num_channels=frame_dict["num_channels"],
+        )
+
+    def _deserialize_message(self, frame_dict: Dict[str, Any]) -> Any:
+        """Deserialize a transport message frame from JSON format.
+
+        Args:
+            frame_dict: Dictionary containing serialized message data.
+
+        Returns:
+            Reconstructed InputTransportMessageFrame instance.
+        """
+        from pipecat.frames.frames import InputTransportMessageFrame
+
+        message = frame_dict["message"]
+        return InputTransportMessageFrame(message=message)
+
     def _dict_to_frame(self, frame_dict: Dict[str, Any]) -> Optional[Any]:
         """Convert a dictionary back to a frame object.
 
@@ -153,16 +229,15 @@ class JSONFrameSerializer(FrameSerializer):
         Returns:
             Reconstructed Frame object, or None if frame type is unknown.
         """
-        frame_type_name = frame_dict.get("___type___")
-        frame_module = frame_dict.get("module", "pipecat.frames.frames")
+        frame_type_name = frame_dict.get("___frame___")
 
         if not frame_type_name:
             logger.error(f"Invalid frame dict: missing type")
             return None
 
         try:
-            # Dynamically import the frame class
-            module = importlib.import_module(frame_module)
+            # Dynamically import the frame class from pipecat.frames.frames
+            module = importlib.import_module("pipecat.frames.frames")
             frame_class = getattr(module, frame_type_name)
 
             # Extract constructor arguments from the dict
@@ -274,7 +349,7 @@ class JSONFrameSerializer(FrameSerializer):
             deserialized_list = []
             for item in value:
                 # Check if item is a serialized frame/dataclass
-                if isinstance(item, dict) and "___type___" in item:
+                if isinstance(item, dict) and "___frame___" in item:
                     deserialized_list.append(self._dict_to_frame(item))
                 else:
                     deserialized_list.append(self._deserialize_value(item))
@@ -282,7 +357,7 @@ class JSONFrameSerializer(FrameSerializer):
             return tuple(deserialized_list) if is_tuple else deserialized_list
         elif isinstance(value, dict):
             # Check if this is a serialized frame
-            if "___type___" in value:
+            if "___frame___" in value:
                 return self._dict_to_frame(value)
             else:
                 return {k: self._deserialize_value(v) for k, v in value.items()}

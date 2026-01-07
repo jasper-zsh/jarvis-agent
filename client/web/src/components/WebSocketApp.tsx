@@ -30,7 +30,7 @@ export const WebSocketApp = ({ onConnect, onDisconnect }: WebSocketAppProps) => 
         const transport = new WebSocketTransport({
           mediaManager,
           wsUrl: WEBSOCKET_URL,
-          serializer: new ProtobufFrameSerializer(),
+          serializer: new JSONFrameSerializer(),
           recorderSampleRate: 16000
         });
 
