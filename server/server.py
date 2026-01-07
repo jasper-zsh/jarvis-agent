@@ -15,7 +15,13 @@ load_dotenv(override=True)
 
 app = FastAPI()
 
-@app.websocket('/agent')
+@app.post("/start")
+async def start(request: Request):
+    return {
+        'wsUrl': str(request.url_for('agent'))
+    }
+
+@app.websocket('/agent', name='agent')
 async def agent_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("WebSocket connection accepted")
