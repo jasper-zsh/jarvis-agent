@@ -43,11 +43,11 @@ from pipecat.serializers.protobuf import ProtobufFrameSerializer
 from pipecat_tail.observer import TailObserver
 from pipecat_whisker import WhiskerObserver
 
-from qwen.asr import QwenASRService
-from qwen.tts import QwenTTSService
+from jarvis.qwen.asr import QwenASRService
+from jarvis.qwen.tts import QwenTTSService
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
-from llm.image_analyzer import ImageAnalyzer
+from jarvis.llm.image_analyzer import ImageAnalyzer
 from jarvis.serializer import JSONFrameSerializer
 
 load_dotenv(override=True)
