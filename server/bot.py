@@ -235,6 +235,8 @@ async def run_bot(websocket_client: FastAPIWebsocketClient):
             WhiskerObserver(pipeline),
             TailObserver(),
         ],
+        cancel_on_idle_timeout=False,
+        idle_timeout_secs=None,
     )
 
     @rtvi.event_handler("on_client_ready")
