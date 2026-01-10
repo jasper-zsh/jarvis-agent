@@ -47,6 +47,13 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # The .venv/bin directory contains the Python executable
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Download NLTK data required for natural language processing
+# punkt_tab: Pre-trained tokenizer model for sentence and word tokenization
+# This is downloaded during build to avoid repeated downloads at runtime
+# Using a separate layer allows Docker to cache this step when dependencies haven't changed
+RUN python -c "import nltk; nltk.download('punkt_tab', quiet=True)" || \
+    echo "Warning: Some NLTK data downloads may have failed. Application may need to download at runtime."
+
 # Expose port 7860 (default port for the application)
 EXPOSE 7860
 

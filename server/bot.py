@@ -39,7 +39,6 @@ from pipecat.services.mcp_service import MCPClient
 from mcp.client.session_group import StreamableHttpParameters
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketTransport, FastAPIWebsocketParams, FastAPIWebsocketClient
-from pipecat.serializers.protobuf import ProtobufFrameSerializer
 from pipecat_tail.observer import TailObserver
 from pipecat_whisker import WhiskerObserver
 
