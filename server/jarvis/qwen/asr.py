@@ -341,6 +341,10 @@ class QwenASRService(AIService):
     
     async def process_audio_frame(self, frame: AudioRawFrame):
         """处理音频帧，考虑时间戳"""
+        # 如果正在停止，不处理新帧
+        if self._stopping:
+            return
+        
         # 转换为带时间戳的帧
         ts_frame = TimestampedAudioFrame.from_audio_raw_frame(frame, self._last_pts)
         self._last_pts = ts_frame.pts
@@ -365,13 +369,35 @@ class QwenASRService(AIService):
         if frame.emulated:
             return
         self._user_speaking = True
-        self._recognition.start()
+        if not self._recognition._running:
+            self._recognition.start()
     
     async def _user_stopped_speaking(self, frame: UserStoppedSpeakingFrame):
         if frame.emulated:
             return
+        
         self._user_speaking = False
-        self._recognition.stop()
+        # Set stopping flag to prevent new frames from being processed
+        self._stopping = True
+        
+        # Drain the buffer - send all remaining buffered audio
+        if not self._time_buffer.is_empty():
+            buffered_frames = self._time_buffer.get_all_frames()
+            logger.info(f'Draining buffer: sending {len(buffered_frames)} frames before stopping')
+            
+            # Send buffered frames
+            await self._time_sender.send_frames_synchronized(buffered_frames)
+            
+            # Record buffered audio if recording
+            if self._record_wav is not None:
+                for frame in buffered_frames:
+                    self._record_wav.writeframes(frame.audio)
+        
+        # Now stop the recognition after buffer is drained
+        if self._recognition._running:
+            self._recognition.stop()
+        
+        # Close recording file if open
         if self._record_wav is not None:
             self._record_wav.close()
             self._record_wav = None
@@ -382,3 +408,4 @@ class QwenASRService(AIService):
         self._connection_established_time = None
         self._last_pts = None
         self._time_buffer = TimeOrderedBuffer(max_duration_seconds=1.0)
+        self._stopping = False

@@ -134,8 +134,8 @@ async def run_bot(websocket_client: FastAPIWebsocketClient):
 
     image_analyzer = ImageAnalyzer(
         base_url=os.getenv("OPENAI_BASE_URL"),
-        api_key=os.getenv('GLM_API_KEY'),
-        model='glm-4.6v'
+        api_key=os.getenv('OPENAI_API_KEY'),
+        model=os.getenv('OPENAI_VL_MODEL')
     )
 
     # Load system prompt from file
@@ -155,7 +155,7 @@ async def run_bot(websocket_client: FastAPIWebsocketClient):
             *websearch_tools.standard_tools,
             FunctionSchema(
                 name='CloseWhenNothingToDo',
-                description='Call this function when you have nothing to do and want to say goodbye',
+                description='当用户不再需要帮助，或者你认为到了需要道别的时候，使用这个工具',
                 properties={},
                 required=[],
             ),
@@ -179,13 +179,15 @@ async def run_bot(websocket_client: FastAPIWebsocketClient):
             ),
             FunctionSchema(
                 name='AnalyzeImage',
-                description='Analyze image content. image_uuid is the uuid result you use TakePhoto to generate before, prompts is what you want to analyze with this photo. A photo can only be analyzed for 1 times.',
+                description='Analyze image content. The output will be used in a voice assistant, so do not generate non-spellable content. A photo can only be analyzed for 1 times.',
                 properties={
                     'image_uuid': {
                         'type': 'string',
+                        'description': 'the uuid result you use TakePhoto to generate before'
                     },
                     'prompts': {
                         'type': 'string',
+                        'description': 'what you want to analyze with this photo, and rules about the output'
                     },
                 },
                 required=['image_uuid', 'prompts']
