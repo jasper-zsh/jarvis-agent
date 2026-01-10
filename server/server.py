@@ -22,6 +22,13 @@ app = FastAPI(allowed_hosts=trusted_hosts)
 
 @app.post("/start")
 async def start(request: Request):
+    forwarded_proto = request.headers.get('X-Forwarded-Proto')
+    if forwarded_proto:
+        scheme = 'wss' if forwarded_proto.lower() == 'https' else 'ws'
+        forwarded_host = request.headers.get('X-Forwarded-Host')
+        return {
+            'wsUrl': f'{scheme}://{forwarded_host}/agent'
+        }
     return {
         'wsUrl': str(request.url_for('agent'))
     }
