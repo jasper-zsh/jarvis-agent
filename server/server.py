@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from contextlib import asynccontextmanager
 
@@ -13,7 +14,11 @@ import uuid
 
 load_dotenv(override=True)
 
-app = FastAPI()
+# Read trusted hosts from environment variable
+trusted_hosts_env = os.getenv("TRUSTED_HOSTS", "localhost,127.0.0.1")
+trusted_hosts = [host.strip() for host in trusted_hosts_env.split(",") if host.strip()]
+
+app = FastAPI(allowed_hosts=trusted_hosts)
 
 @app.post("/start")
 async def start(request: Request):
